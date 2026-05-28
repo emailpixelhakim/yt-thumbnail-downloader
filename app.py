@@ -19,18 +19,24 @@ def get_video_info(url):
             st.error(f"Gagal mengambil data video. Pastikan URL benar. Error: {e}")
             return None
 
-def generate_redesign_prompt(title):
-    """Membuat prompt otomatis untuk recreate/redesign thumbnail berdasarkan judul"""
-    prompt = (
+def generate_advanced_prompt(title, user_instruction):
+    """Menggabungkan judul video dengan instruksi custom dari user secara otomatis"""
+    base_prompt = (
         f"Create a high-clickability YouTube thumbnail design inspired by the topic: '{title}'. "
-        f"The style should be modern, vibrant, and eye-catching with high contrast, bold typography placeholders, "
-        f"and dynamic lighting. Cinematic composition, 4k resolution, optimized for YouTube 16:9 aspect ratio --ar 16:9"
+        f"The style should be modern, vibrant, and eye-catching with high contrast and dynamic lighting. "
     )
-    return prompt
+    
+    # Jika user menulis perintah tambahan, masukkan ke dalam prompt
+    if user_instruction:
+        base_prompt += f"Additional modification: {user_instruction}. "
+        
+    # Tambahan format standar AI untuk aspect ratio thumbnail youtube (16:9)
+    base_prompt += "Cinematic composition, 4k resolution, optimized for YouTube aspect ratio --ar 16:9"
+    return base_prompt
 
 # --- INTERFAS PENGGUNA (UI) ---
 st.title("📸 YT Thumbnail Downloader & Redesigner")
-st.write("Unduh thumbnail YouTube dan dapatkan *prompt* otomatis untuk mendesain ulang menggunakan AI!")
+st.write("Unduh thumbnail YouTube dan buat *prompt* AI untuk mendesain ulang dengan mudah!")
 
 # Input URL Video
 video_url = st.text_input("Masukkan URL Video YouTube:", placeholder="https://www.youtube.com/watch?v=...")
@@ -53,13 +59,12 @@ if video_url:
             "Standard Quality (240p)": f"https://img.youtube.com/vi/{video_id}/default.jpg"
         }
         
-        # Tampilkan Preview Thumbnail Tertinggi
+        # Tampilkan Preview Thumbnail
         st.image(resolutions["Max Res (HD - 1080p/720p)"], caption="Preview Thumbnail Utama", use_container_width=True)
         
-        # Tombol Download berdasarkan resolusi
+        # Tombol Download
         st.subheader("⬇️ Pilih Kualitas Unduhan")
         col1, col2 = st.columns(2)
-        
         for i, (res_name, res_url) in enumerate(resolutions.items()):
             with col1 if i % 2 == 0 else col2:
                 st.markdown(f"**{res_name}**")
@@ -67,22 +72,24 @@ if video_url:
                 
         st.markdown("---")
         
-        # --- FITUR REDESIGN / RECREATE PROMPT ---
-        st.subheader("🎨 Perintah Recreate / Redesain (AI Prompt)")
-        st.write("Gunakan kolom di bawah ini untuk memodifikasi perintah sebelum dimasukkan ke AI (Midjourney, DALL-E, dll).")
+        # --- FITUR BARU: INPUT PERINTAH LANGSUNG ---
+        st.subheader("🎨 Modifikasi & Recreate Desain")
+        st.write("Ketik perintah perubahan yang kamu inginkan di bawah ini tanpa perlu mengedit teks prompt yang rumit.")
         
-        # Generate prompt awal berdasarkan judul
-        default_prompt = generate_redesign_prompt(video_title)
-        
-        # Kolom komentar/perintah yang bisa diedit user
-        user_prompt = st.text_area(
-            "Sesuaikan perintah rekonstruksi thumbnail di sini:", 
-            value=default_prompt, 
-            height=150
+        # Kolom kosong untuk diisi perintah langsung oleh user
+        custom_command = st.text_input(
+            "Ketik perintah modifikasi di sini:", 
+            placeholder="Contoh: buat background warna merah, tambah efek petir, beri teks 'WAW'"
         )
         
-        # Instruksi Penggunaan
+        # Sistem otomatis membuatkan hasil prompt akhirnya
+        final_prompt = generate_advanced_prompt(video_title, custom_command)
+        
+        # Menampilkan hasil siap salin
+        st.markdown("**Hasil Prompt AI Siap Salin:**")
+        st.code(final_prompt, language="text")
+        
         st.info(
-            "💡 **Cara Pakai:** Salin teks di atas, lalu tempel (*paste*) ke AI Image Generator pilihanmu "
-            "(seperti Midjourney, Leonardo.ai, atau Bing Image Creator) untuk membuat aset thumbnail baru yang segar!"
+            "💡 **Cara Pakai:** Kamu tinggal ketik keinginanmu di kolom atas, lalu klik dua kali atau salin kotak abu-abu di atas "
+            "untuk di-paste ke Midjourney, Bing Image Creator, atau DALL-E!"
         )
