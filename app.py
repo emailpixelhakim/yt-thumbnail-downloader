@@ -1,6 +1,7 @@
 import streamlit as st
 import yt_dlp
 import requests
+from streamlit.components.v1 import html
 
 # Konfigurasi Halaman Streamlit
 st.set_page_config(page_title="YT Thumbnail Downloader & Redesigner", page_icon="📸", layout="centered")
@@ -16,11 +17,11 @@ def get_video_info(url):
                 "title": info.get("title"),
                 "thumbnail": info.get("thumbnail")
             }
-        except Exception as e:
+        except:
             return None
 
 def generate_advanced_prompt(title, user_instruction):
-    """Menggabungkan judul video dengan instruksi custom dari user secara otomatis"""
+    """Menggabungkan judul video dengan instruksi custom dari user"""
     base_prompt = (
         f"Create a high-clickability YouTube thumbnail design inspired by the topic: '{title}'. "
         f"The style should be modern, vibrant, and eye-catching with high contrast and dynamic lighting. "
@@ -34,27 +35,49 @@ def generate_advanced_prompt(title, user_instruction):
 st.title("📸 YT Thumbnail Downloader & Redesigner")
 st.write("Unduh thumbnail YouTube dan buat *prompt* AI untuk mendesain ulang dengan mudah!")
 
-# Inisialisasi session state untuk menyimpan teks paste
-if "url_input" not in st.session_state:
-    st.session_state.url_input = ""
-
-# 1. Kolom URL dengan Tombol Tambahan
 st.subheader("🔗 Tautan Video")
-col_url, col_paste = st.columns([4, 1])
+
+# Fitur Utama: Solusi Tombol Paste Menggunakan JavaScript HTML
+# Komponen ini akan mendeteksi isi clipboard HP dan langsung mengirimkannya ke input Streamlit
+js_paste_helper = """
+<script>
+function Jspaste() {
+    navigator.clipboard.readText().then(text => {
+        const inputField = window.parent.document.querySelector('input[aria-label="Masukkan URL Video YouTube:"]');
+        if (inputField) {
+            inputField.value = text;
+            inputField.dispatchEvent(new Event('input', { bubbles: true }));
+        }
+    }).catch(err => {
+        alert("Izinkan akses clipboard di browser HP kamu agar tombol paste berfungsi.");
+    });
+}
+</script>
+<button onclick="Jspaste()" style="
+    width: 100%; 
+    height: 40px; 
+    background-color: #262730; 
+    color: white; 
+    border: 1px solid #464855; 
+    border-radius: 4px; 
+    cursor: pointer;
+    font-weight: bold;
+">📋 Paste Otomatis</button>
+"""
+
+# Membuat tata letak kolom input dan tombol paste
+col_url, col_paste = st.columns([3, 1.2])
 
 with col_url:
     video_url = st.text_input(
         "Masukkan URL Video YouTube:", 
-        value=st.session_state.url_input,
-        placeholder="https://www.youtube.com/watch?v=...",
-        label_visibility="collapsed"
+        placeholder="https://www.youtube.com/watch?v=..."
     )
 
 with col_paste:
-    # Tombol Paste menggunakan fitur bawaan browser (clipboard API) via trik HTML/JS Streamlit
-    # Dikarenakan keterbatasan python server-side, kita buat tombol simulasi isi cepat jika sudah di-copy
-    if st.button("📋 Paste", use_container_width=True):
-        st.info("Silakan tahan kolom input lalu pilih 'Tempel/Paste' bawaan HP kamu.")
+    st.markdown("<div style='margin-top: 28px;'></div>", unsafe_allow_html=True)
+    # Memasukkan elemen tombol paste JavaScript
+    html(js_paste_helper, height=45)
 
 if video_url:
     with st.spinner("Mengambil data video..."):
@@ -66,18 +89,17 @@ if video_url:
         
         st.success(f"Video Ditemukan: **{video_title}**")
         
-        # Link Gambar Kualitas Tertinggi (HD)
+        # Ambil Gambar Kualitas Tertinggi
         hd_thumbnail_url = f"https://img.youtube.com/vi/{video_id}/maxresdefault.jpg"
         
         # Tampilkan Preview Thumbnail
         st.image(hd_thumbnail_url, caption="Preview Thumbnail Utama", use_container_width=True)
         
-        # Fitur Auto-Download File Gambar HD (Langsung download tanpa buka tab baru)
+        # Eksekusi Download Otomatis
         try:
             response = requests.get(hd_thumbnail_url)
             img_data = response.content
             
-            # Tombol Download HD Otomatis tepat di bawah foto
             st.download_button(
                 label="📥 Download Thumbnail (Kualitas HD)",
                 data=img_data,
@@ -86,15 +108,15 @@ if video_url:
                 use_container_width=True
             )
         except:
-            st.warning("Gagal memproses tombol unduh otomatis. Gunakan alternatif klik kanan/tahan pada gambar lalu simpan.")
+            st.warning("Gagal memproses tombol unduh otomatis.")
 
         st.markdown("---")
         
-        # 2. Fitur Modifikasi dengan Tombol Create
+        # --- RECREATE PROMPT SECTION ---
         st.subheader("🎨 Modifikasi & Recreate Desain")
         st.write("Ketik perintah perubahan yang kamu inginkan di bawah ini:")
         
-        col_cmd, col_btn = st.columns([4, 1])
+        col_cmd, col_btn = st.columns([3, 1])
         
         with col_cmd:
             custom_command = st.text_input(
@@ -103,7 +125,6 @@ if video_url:
                 label_visibility="collapsed"
             )
         
-        # Inisialisasi trigger tombol klik
         if "start_create" not in st.session_state:
             st.session_state.start_create = False
             
@@ -111,14 +132,8 @@ if video_url:
             if st.button("🚀 Create", type="primary", use_container_width=True):
                 st.session_state.start_create = True
         
-        # Proses pembuatan prompt hanya jika tombol "Create" ditekan
         if st.session_state.start_create:
             final_prompt = generate_advanced_prompt(video_title, custom_command)
-            
             st.markdown("**Hasil Prompt AI Siap Salin:**")
-            
-            # Menggunakan komponen st.code bawaan Streamlit yang secara OTOMATIS
-            # memunculkan tombol "COPY" di pojok kanan atas kotaknya saat disentuh/diklik di HP!
             st.code(final_prompt, language="text")
-            
-            st.success("✅ Prompt berhasil dibuat! Klik ikon kotak bertumpuk di pojok kanan atas kolom abu-abu untuk COPY instan.")
+            st.success("✅ Klik ikon dua kotak bertumpuk di pojok kanan atas kolom abu-abu untuk COPY instan.")
