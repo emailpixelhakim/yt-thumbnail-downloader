@@ -1,24 +1,28 @@
 import streamlit as st
-import yt_dlp
+import re
 import requests
-from streamlit.components.v1 import html
 
 # Konfigurasi Halaman Streamlit
 st.set_page_config(page_title="YT Thumbnail Downloader & Redesigner", page_icon="📸", layout="centered")
 
-def get_video_info(url):
-    """Mengambil ID video, judul, dan thumbnail menggunakan yt-dlp"""
-    ydl_opts = {'quiet': True, 'skip_download': True}
-    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-        try:
-            info = ydl.extract_info(url, download=False)
-            return {
-                "id": info.get("id"),
-                "title": info.get("title"),
-                "thumbnail": info.get("thumbnail")
-            }
-        except:
-            return None
+def extract_video_id(url):
+    """Mengekstrak ID video dari berbagai model URL YouTube secara instan"""
+    regex = r"(?:v=|\/)([0-9A-Za-z_-]{11}).*"
+    match = re.search(regex, url)
+    if match:
+        return match.group(1)
+    return None
+
+def get_video_title_fallback(video_id):
+    """Mengambil judul video secara cepat lewat oEmbed API resmi YouTube"""
+    try:
+        url = f"https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v={video_id}&format=json"
+        res = requests.get(url, timeout=5)
+        if res.status_code == 200:
+            return res.json().get("title", "YouTube Video")
+    except:
+        pass
+    return "YouTube Video"
 
 def generate_advanced_prompt(title, user_instruction):
     """Menggabungkan judul video dengan instruksi custom dari user"""
@@ -35,69 +39,34 @@ def generate_advanced_prompt(title, user_instruction):
 st.title("📸 YT Thumbnail Downloader & Redesigner")
 st.write("Unduh thumbnail YouTube dan buat *prompt* AI untuk mendesain ulang dengan mudah!")
 
+# 1. Bagian Tautan Video
 st.subheader("🔗 Tautan Video")
-
-# Fitur Utama: Solusi Tombol Paste Menggunakan JavaScript HTML
-# Komponen ini akan mendeteksi isi clipboard HP dan langsung mengirimkannya ke input Streamlit
-js_paste_helper = """
-<script>
-function Jspaste() {
-    navigator.clipboard.readText().then(text => {
-        const inputField = window.parent.document.querySelector('input[aria-label="Masukkan URL Video YouTube:"]');
-        if (inputField) {
-            inputField.value = text;
-            inputField.dispatchEvent(new Event('input', { bubbles: true }));
-        }
-    }).catch(err => {
-        alert("Izinkan akses clipboard di browser HP kamu agar tombol paste berfungsi.");
-    });
-}
-</script>
-<button onclick="Jspaste()" style="
-    width: 100%; 
-    height: 40px; 
-    background-color: #262730; 
-    color: white; 
-    border: 1px solid #464855; 
-    border-radius: 4px; 
-    cursor: pointer;
-    font-weight: bold;
-">📋 Paste Otomatis</button>
-"""
-
-# Membuat tata letak kolom input dan tombol paste
-col_url, col_paste = st.columns([3, 1.2])
-
-with col_url:
-    video_url = st.text_input(
-        "Masukkan URL Video YouTube:", 
-        placeholder="https://www.youtube.com/watch?v=..."
-    )
-
-with col_paste:
-    st.markdown("<div style='margin-top: 28px;'></div>", unsafe_allow_html=True)
-    # Memasukkan elemen tombol paste JavaScript
-    html(js_paste_helper, height=45)
+video_url = st.text_input(
+    "Masukkan URL Video YouTube:", 
+    placeholder="https://www.youtube.com/watch?v=... atau https://youtu.be/..."
+)
 
 if video_url:
-    with st.spinner("Mengambil data video..."):
-        video_data = get_video_info(video_url)
+    video_id = extract_video_id(video_url)
     
-    if video_data:
-        video_id = video_data["id"]
-        video_title = video_data["title"]
+    if video_id:
+        with st.spinner("Mengambil informasi video..."):
+            video_title = get_video_title_fallback(video_id)
         
-        st.success(f"Video Ditemukan: **{video_title}**")
+        st.success(f"🎥 Video Ditemukan: **{video_title}**")
         
-        # Ambil Gambar Kualitas Tertinggi
+        # Link Gambar Kualitas Tertinggi (HD)
         hd_thumbnail_url = f"https://img.youtube.com/vi/{video_id}/maxresdefault.jpg"
+        fallback_thumbnail_url = f"https://img.youtube.com/vi/{video_id}/hqdefault.jpg"
         
-        # Tampilkan Preview Thumbnail
+        # 2. Tampilkan Preview Thumbnail Utama
         st.image(hd_thumbnail_url, caption="Preview Thumbnail Utama", use_container_width=True)
         
-        # Eksekusi Download Otomatis
+        # 3. SATU TOMBOL DOWNLOAD HD (Tepat di bawah preview gambar)
         try:
-            response = requests.get(hd_thumbnail_url)
+            response = requests.get(hd_thumbnail_url, timeout=5)
+            if response.status_code != 200:
+                response = requests.get(fallback_thumbnail_url, timeout=5)
             img_data = response.content
             
             st.download_button(
@@ -108,32 +77,24 @@ if video_url:
                 use_container_width=True
             )
         except:
-            st.warning("Gagal memproses tombol unduh otomatis.")
+            st.warning("Gagal memproses unduhan otomatis. Silakan ketuk lama gambar preview di atas lalu simpan ke galeri.")
 
         st.markdown("---")
         
-        # --- RECREATE PROMPT SECTION ---
+        # 4. KOLOM PERINTAH MODIFIKASI
         st.subheader("🎨 Modifikasi & Recreate Desain")
-        st.write("Ketik perintah perubahan yang kamu inginkan di bawah ini:")
+        custom_command = st.text_input(
+            "Ketik perintah modifikasi di sini:", 
+            placeholder="Contoh: buat background warna merah, tambah efek petir, beri teks 'WAW'"
+        )
         
-        col_cmd, col_btn = st.columns([3, 1])
+        # 5. HASIL PROMPT YANG SIAP DI-COPY (Tepat di bawah perintah)
+        final_prompt = generate_advanced_prompt(video_title, custom_command)
         
-        with col_cmd:
-            custom_command = st.text_input(
-                "Ketik perintah modifikasi di sini:", 
-                placeholder="Contoh: buat background warna merah, tambah efek petir",
-                label_visibility="collapsed"
-            )
+        st.markdown("**Hasil Prompt AI Siap Salin:**")
+        # Menggunakan st.code agar muncul tombol "Copy" otomatis di pojok kanan atas kotaknya
+        st.code(final_prompt, language="text")
+        st.info("💡 Klik ikon kotak bertumpuk di pojok kanan atas kolom abu-abu di atas untuk menyalin instan.")
         
-        if "start_create" not in st.session_state:
-            st.session_state.start_create = False
-            
-        with col_btn:
-            if st.button("🚀 Create", type="primary", use_container_width=True):
-                st.session_state.start_create = True
-        
-        if st.session_state.start_create:
-            final_prompt = generate_advanced_prompt(video_title, custom_command)
-            st.markdown("**Hasil Prompt AI Siap Salin:**")
-            st.code(final_prompt, language="text")
-            st.success("✅ Klik ikon dua kotak bertumpuk di pojok kanan atas kolom abu-abu untuk COPY instan.")
+    else:
+        st.error("Format link YouTube tidak dikenali. Pastikan tautan yang dimasukkan benar.")
